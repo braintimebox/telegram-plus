@@ -5443,12 +5443,25 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     
                     // Telegram Plus: chat list swipe (reveal) actions are disabled,
                     // with no in-app setting to re-enable them. Every action that
-                    // was reachable by swipe is also reachable elsewhere — the
-                    // long-press context menu (ChatContextMenus.swift), the archive
-                    // context menu, or chat list edit mode — so no function is lost.
-                    // The accessibility custom actions built above still expose the
-                    // full action set to VoiceOver.
-                    strongSelf.setRevealOptions((left: [], right: []), enableAnimations: item.context.sharedContext.energyUsageSettings.fullTranslucency)
+                    // was reachable by swipe in the chat list is also reachable
+                    // elsewhere — the long-press context menu (ChatContextMenus.swift),
+                    // the archive context menu, or chat list edit mode — so no
+                    // function is lost. The accessibility custom actions built above
+                    // still expose the full action set to VoiceOver.
+                    //
+                    // Rows that belong to embedded management lists (quick replies,
+                    // business messages, command lists, personal channel) are not the
+                    // chat list: upstream offers their edit/delete only through this
+                    // swipe, so they keep it.
+                    var keepsSwipeActions = false
+                    if case let .peer(peerData) = item.content, peerData.customMessageListData != nil {
+                        keepsSwipeActions = true
+                    }
+                    if keepsSwipeActions {
+                        strongSelf.setRevealOptions((left: peerLeftRevealOptions, right: peerRevealOptions), enableAnimations: item.context.sharedContext.energyUsageSettings.fullTranslucency)
+                    } else {
+                        strongSelf.setRevealOptions((left: [], right: []), enableAnimations: item.context.sharedContext.energyUsageSettings.fullTranslucency)
+                    }
                     if !strongSelf.customAnimationInProgress {
                         strongSelf.setRevealOptionsOpened(item.hasActiveRevealControls, animated: true)
                     }

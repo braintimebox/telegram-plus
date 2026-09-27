@@ -134,6 +134,16 @@ func chatContextMenuItems(context: AccountContext, peerId: EnginePeer.Id, promoI
                 )
                 |> map { [weak chatListController] isContact, notificationSettings, globalNotificationSettings, readCounters -> [ContextMenuItem] in
                     if promoInfo != nil {
+                        // Telegram Plus: upstream returns an empty context menu for
+                        // promo rows (PSA / sponsored proxy), while a PSA row's only
+                        // swipe action is "Hide". Chat list swipe is disabled, so
+                        // expose that hide action here rather than losing it.
+                        if case .psa = promoInfo, let chatListController {
+                            return [.action(ContextMenuActionItem(text: strings.ChatList_HideAction, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/HideArchive"), color: theme.contextMenu.primaryColor) }, action: { _, f in
+                                f(.default)
+                                chatListController.hidePsa(peerId)
+                            }))]
+                        }
                         return []
                     }
 
