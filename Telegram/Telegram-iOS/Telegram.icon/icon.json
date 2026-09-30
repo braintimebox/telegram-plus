@@ -1,5 +1,20 @@
 {
-  "fill" : "system-light",
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.29412,0.34118,0.38431,1.00000",
+      "srgb:0.11373,0.11765,0.12549,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
   "groups" : [
     {
       "blend-mode" : "normal",
@@ -66,11 +81,11 @@
           "glass" : true,
           "hidden-specializations" : [
             {
-              "value" : false
+              "value" : true
             },
             {
               "idiom" : "watchOS",
-              "value" : false
+              "value" : true
             }
           ],
           "image-name" : "Oval.svg",
