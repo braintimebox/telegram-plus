@@ -39,12 +39,21 @@ jobs:
             --old-bundle ph.telegra.Telegraph \
             --new-bundle ph.telegra.TelegramPlus
 
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: /Users/Shared/bazel_cache
+          key: ${{ runner.os }}-bazel-${{ hashFiles('**/BUILD', '**/BUILD.bazel', '**/*.bzl', 'WORKSPACE') }}
+          restore-keys: |
+            ${{ runner.os }}-bazel-
+
       - name: Build the App
         run: |
           set -x
 
           SOURCE_DIR=/Users/Shared/telegram-ios
-          BAZEL_USER_ROOT="/private/var/tmp/_bazel_containerhost"
+          mkdir -p /Users/Shared/bazel_cache
+          BAZEL_USER_ROOT="/Users/Shared/bazel_cache"
 
           cd $SOURCE_DIR
 
