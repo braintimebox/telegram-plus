@@ -414,6 +414,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.window = window
         self.nativeWindow = window
         
+        // Telegram Plus DIAGNOSTIC (temporary, remove once the black-screen cause is fixed):
+        // show the window immediately and give it an unmistakable background colour, so that a
+        // black screen can be told apart from "the app never reached this point". If the screen
+        // shows this magenta tint, execution got past window creation; if it stays pure black,
+        // it did not.
+        hostView.containerView.backgroundColor = UIColor(red: 0.55, green: 0.0, blue: 0.55, alpha: 1.0)
+        window.makeKeyAndVisible()
+        
         hostView.containerView.layer.addSublayer(MetalEngine.shared.rootLayer)
         
         if !UIDevice.current.isBatteryMonitoringEnabled {
@@ -642,6 +650,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         )
         
         guard let appGroupUrl = maybeAppGroupUrl else {
+            // Telegram Plus diagnostic: upstream presents this alert into a window that is only
+            // made visible much later (makeKeyAndVisible sits after this guard), so when the
+            // guard fires the alert is never seen — the user just stares at the (black) launch
+            // screen and the app does nothing. Show the window first so the failure is visible.
+            self.window?.makeKeyAndVisible()
             self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
             return true
         }
@@ -705,6 +718,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         
         if !writeAbilityTestSuccess {
+            // Telegram Plus diagnostic: same reason as the app-group guard above — without
+            // showing the window first this alert is invisible and the failure is silent.
+            self.window?.makeKeyAndVisible()
             let alertController = UIAlertController(title: nil, message: "The device does not have sufficient free space.", preferredStyle: .alert)
             alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
                 preconditionFailure()
