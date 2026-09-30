@@ -497,4 +497,148 @@ API_AVAILABLE(ios(10))
     });
 }
 
+#pragma mark - App Group resolution
+
+static NSString * const kTGPAppGroupCacheKey = @"ph.telegra.TelegramPlus.resolvedAppGroup";
+
+// Verifies a group is genuinely usable: containerURL can return a well-formed
+// path for a group the process cannot actually access, so check the directory.
++ (BOOL)tg_groupIsUsable:(NSString *)name {
+    if (name.length == 0) { return NO; }
+    NSURL *url = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:name];
+    if (url == nil) { return NO; }
+    return [NSFileManager.defaultManager fileExistsAtPath:url.path];
+}
+
+// Reads the entitlement value we care about straight out of the signature blob
+// that is embedded in our own in-memory Mach-O image. No private API is used:
+// we only walk load commands and decode the CS_ENTITLEMENTS plist.
++ (NSArray * _Nullable)tg_ownSignedAppGroups {
+    NSString *executablePath = [NSBundle.mainBundle executablePath];
+    if (executablePath.length == 0) { return nil; }
+
+    NSData *fileData = [NSData dataWithContentsOfFile:executablePath options:NSDataReadingMappedIfSafe error:NULL];
+    if (fileData.length < 32) { return nil; }
+
+    const uint8_t *bytes = fileData.bytes;
+    NSUInteger totalLength = fileData.length;
+    NSUInteger base = 0;
+    const uint8_t *magicBytes = bytes;
+
+    uint32_t beMagic = (uint32_t)(((uint32_t)magicBytes[0] << 24) | ((uint32_t)magicBytes[1] << 16) |
+                                  ((uint32_t)magicBytes[2] << 8)  |  (uint32_t)magicBytes[3]);
+    if (beMagic == 0xcafebabe || beMagic == 0xcafebabf) {
+        if (totalLength < 12) { return nil; }
+        base = (NSUInteger)(((uint32_t)bytes[8] << 24) | ((uint32_t)bytes[9] << 16) |
+                            ((uint32_t)bytes[10] << 8) |  (uint32_t)bytes[11]);
+    }
+    if (base + 32 > totalLength) { return nil; }
+
+    const uint8_t *header = bytes + base;
+    uint32_t ncmds = (uint32_t)(header[16] | (header[17] << 8) | (header[18] << 16) | ((uint32_t)header[19] << 24));
+
+    NSUInteger cursor = base + 32;
+    NSUInteger signatureOffset = 0;
+    for (uint32_t i = 0; i < ncmds; i++) {
+        if (cursor + 8 > totalLength) { return nil; }
+        const uint8_t *command = bytes + cursor;
+        uint32_t cmd = (uint32_t)(command[0] | (command[1] << 8) | (command[2] << 16) | ((uint32_t)command[3] << 24));
+        uint32_t cmdsize = (uint32_t)(command[4] | (command[5] << 8) | (command[6] << 16) | ((uint32_t)command[7] << 24));
+        if (cmdsize < 8) { return nil; }
+        if (cmd == 0x1d) {   // LC_CODE_SIGNATURE
+            signatureOffset = (NSUInteger)(command[8] | (command[9] << 8) | (command[10] << 16) | ((uint32_t)command[11] << 24));
+            break;
+        }
+        cursor += cmdsize;
+    }
+    if (signatureOffset == 0 || signatureOffset + 12 > totalLength) { return nil; }
+
+    const uint8_t *superBlob = bytes + signatureOffset;
+    uint32_t superMagic = (uint32_t)((superBlob[0] << 24) | (superBlob[1] << 16) | (superBlob[2] << 8) | superBlob[3]);
+    if (superMagic != 0xfade0cc0) { return nil; }   // CSSuperBlob
+    uint32_t blobCount = (uint32_t)((superBlob[8] << 24) | (superBlob[9] << 16) | (superBlob[10] << 8) | superBlob[11]);
+
+    for (uint32_t b = 0; b < blobCount; b++) {
+        NSUInteger entry = 12 + (NSUInteger)b * 8;
+        if (signatureOffset + entry + 8 > totalLength) { return nil; }
+        uint32_t blobOffset = (uint32_t)((superBlob[entry + 4] << 24) | (superBlob[entry + 5] << 16) |
+                                         (superBlob[entry + 6] << 8)  |  superBlob[entry + 7]);
+        const uint8_t *blob = superBlob + blobOffset;
+        if ((NSUInteger)(blob - bytes) + 8 > totalLength) { return nil; }
+        uint32_t blobMagic = (uint32_t)((blob[0] << 24) | (blob[1] << 16) | (blob[2] << 8) | blob[3]);
+        uint32_t blobLength = (uint32_t)((blob[4] << 24) | (blob[5] << 16) | (blob[6] << 8) | blob[7]);
+        if (blobMagic != 0xfade7171 || blobLength < 8) { continue; }   // CS_ENTITLEMENTS
+
+        NSUInteger payloadLength = (NSUInteger)blobLength - 8;
+        if ((NSUInteger)(blob - bytes) + 8 + payloadLength > totalLength) { return nil; }
+        NSData *payload = [NSData dataWithBytes:(blob + 8) length:payloadLength];
+        NSDictionary *entitlements = [NSPropertyListSerialization propertyListWithData:payload
+                                                                              options:NSPropertyListImmutable
+                                                                               format:NULL
+                                                                                error:NULL];
+        if (![entitlements isKindOfClass:[NSDictionary class]]) { return nil; }
+        id groups = entitlements[@"com.apple.security.application-groups"];
+        return [groups isKindOfClass:[NSArray class]] ? groups : nil;
+    }
+    return nil;
+}
+
++ (NSURL * _Nullable)appGroupURLForBaseAppBundleId:(NSString * _Nonnull)baseAppBundleId {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+    // Fast path: resolved once, then reused on every later launch.
+    NSString *cached = [defaults stringForKey:kTGPAppGroupCacheKey];
+    if (cached.length != 0) {
+        NSURL *url = [fileManager containerURLForSecurityApplicationGroupIdentifier:cached];
+        if (url != nil) { return url; }
+        [defaults removeObjectForKey:kTGPAppGroupCacheKey];
+    }
+
+    // 1. Stock behaviour: the group Telegram computes from the bundle id.
+    NSString *expected = [@"group." stringByAppendingString:baseAppBundleId];
+    if ([self tg_groupIsUsable:expected]) {
+        [defaults setObject:expected forKey:kTGPAppGroupCacheKey];
+        return [fileManager containerURLForSecurityApplicationGroupIdentifier:expected];
+    }
+
+    // 2. Whatever our own signature actually grants. Prefer a group that already
+    //    holds this app's data, so changing signing identity does not silently
+    //    point the app at an empty container.
+    NSString *firstUsable = nil;
+    for (NSString *name in [self tg_ownSignedAppGroups]) {
+        if (![name isKindOfClass:[NSString class]] || ![self tg_groupIsUsable:name]) { continue; }
+        if (firstUsable == nil) { firstUsable = name; }
+        NSURL *url = [fileManager containerURLForSecurityApplicationGroupIdentifier:name];
+        for (NSString *marker in @[@"accounts-metadata", @"account-", @"telegram-data"]) {
+            if ([fileManager fileExistsAtPath:[url.path stringByAppendingPathComponent:marker]]) {
+                [defaults setObject:name forKey:kTGPAppGroupCacheKey];
+                return url;
+            }
+        }
+    }
+    if (firstUsable != nil) {
+        [defaults setObject:firstUsable forKey:kTGPAppGroupCacheKey];
+        return [fileManager containerURLForSecurityApplicationGroupIdentifier:firstUsable];
+    }
+
+    // 3. Last resort: the app's own container. Nothing is shared with the
+    //    extensions, so notifications and share stay broken, but the app runs.
+    NSURL *own = [[fileManager URLsForDirectory:NSApplicationSupportDirectory
+                                      inDomains:NSUserDomainMask] firstObject];
+    if (own != nil && ![fileManager fileExistsAtPath:own.path]) {
+        [fileManager createDirectoryAtPath:own.path withIntermediateDirectories:YES attributes:nil error:NULL];
+    }
+    return own;
+}
+
++ (NSString * _Nullable)appGroupNameForBaseAppBundleId:(NSString * _Nonnull)baseAppBundleId {
+    NSString *cached = [[NSUserDefaults standardUserDefaults] stringForKey:kTGPAppGroupCacheKey];
+    if (cached.length == 0) {
+        (void)[self appGroupURLForBaseAppBundleId:baseAppBundleId];
+        cached = [[NSUserDefaults standardUserDefaults] stringForKey:kTGPAppGroupCacheKey];
+    }
+    return cached.length != 0 ? cached : nil;
+}
+
 @end

@@ -81,8 +81,7 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
     
     let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
     
-    let appGroupName = "group.\(baseAppBundleId)"
-    let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+    let maybeAppGroupUrl = BuildConfig.appGroupURL(forBaseAppBundleId: baseAppBundleId)
     
     guard let appGroupUrl = maybeAppGroupUrl else {
         completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .recent)], policy: .atEnd))

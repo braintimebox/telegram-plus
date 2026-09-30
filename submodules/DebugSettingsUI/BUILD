@@ -25,6 +25,7 @@ swift_library(
         "//third-party/ZipArchive:ZipArchive",
         "//submodules/InAppPurchaseManager:InAppPurchaseManager",
         "//submodules/TelegramVoip",
+        "//submodules/BuildConfig:BuildConfig",
     ],
     visibility = [
         "//visibility:public",

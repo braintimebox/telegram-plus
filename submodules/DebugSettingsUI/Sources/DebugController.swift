@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import BuildConfig
 import Display
 import SwiftSignalKit
 import TelegramCore
@@ -1671,8 +1672,7 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
         return getNavigationControllerImpl?()
     })
     
-    let appGroupName = "group.\(Bundle.main.bundleIdentifier!)"
-    let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+    let maybeAppGroupUrl = BuildConfig.appGroupURL(forBaseAppBundleId: Bundle.main.bundleIdentifier!)
     
     var hasLegacyAppData = false
     if let appGroupUrl = maybeAppGroupUrl {

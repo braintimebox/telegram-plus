@@ -414,14 +414,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.window = window
         self.nativeWindow = window
         
-        // Telegram Plus DIAGNOSTIC (temporary, remove once the black-screen cause is fixed):
-        // show the window immediately and give it an unmistakable background colour, so that a
-        // black screen can be told apart from "the app never reached this point". If the screen
-        // shows this magenta tint, execution got past window creation; if it stays pure black,
-        // it did not.
-        hostView.containerView.backgroundColor = UIColor(red: 0.55, green: 0.0, blue: 0.55, alpha: 1.0)
-        window.makeKeyAndVisible()
-        
         hostView.containerView.layer.addSublayer(MetalEngine.shared.rootLayer)
         
         if !UIDevice.current.isBatteryMonitoringEnabled {
@@ -536,8 +528,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
         
         let baseAppBundleId = Bundle.main.bundleIdentifier!
-        let appGroupName = "group.\(baseAppBundleId)"
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        let maybeAppGroupUrl = BuildConfig.appGroupURL(forBaseAppBundleId: baseAppBundleId)
         
         let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
         self.buildConfig = buildConfig

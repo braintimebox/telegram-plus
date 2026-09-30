@@ -1,4 +1,5 @@
 import Foundation
+import BuildConfig
 
 public enum WidgetCodingError: Error {
     case generic
@@ -359,8 +360,7 @@ public struct WidgetPresentationData: Codable, Equatable {
         }
         let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
         
-        let appGroupName = "group.\(baseAppBundleId)"
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        let maybeAppGroupUrl = BuildConfig.appGroupURL(forBaseAppBundleId: baseAppBundleId)
         
         guard let appGroupUrl = maybeAppGroupUrl else {
             return WidgetPresentationData.default

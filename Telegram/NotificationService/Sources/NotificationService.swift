@@ -754,8 +754,7 @@ private final class NotificationServiceHandler {
         let apiHash: String = buildConfig.apiHash
         let languagesCategory = "ios"
 
-        let appGroupName = "group.\(baseAppBundleId)"
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        let maybeAppGroupUrl = BuildConfig.appGroupURL(forBaseAppBundleId: baseAppBundleId)
 
         guard let appGroupUrl = maybeAppGroupUrl else {
             return nil
