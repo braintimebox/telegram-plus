@@ -92,6 +92,27 @@ jobs:
           echo "Collected $SRC_IPA -> TelegramPlus.ipa"
           cp "$SRC_IPA" "$OUTPUT_PATH/TelegramPlus.ipa"
 
+      - name: Inspect entitlements of built IPA
+        run: |
+          set -x
+          cd /Users/Shared/telegram-ios/build/artifacts
+          rm -rf /tmp/ipa && mkdir -p /tmp/ipa
+          unzip -q TelegramPlus.ipa -d /tmp/ipa
+          APP=$(ls -d /tmp/ipa/Payload/*.app | head -1)
+          echo "=== bundle id ==="
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          echo "=== app entitlements (codesign) ==="
+          codesign -d --entitlements :- "$APP" 2>&1 || true
+          echo "=== embedded profile: main app ==="
+          security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null | plutil -p - \
+            | grep -E "application-groups|application-identifier|aps-environment" -A2 || true
+          echo "=== embedded profile: extensions ==="
+          for e in "$APP"/PlugIns/*.appex; do
+            echo "--- $(basename "$e") ---"
+            security cms -D -i "$e/embedded.mobileprovision" 2>/dev/null | plutil -p - \
+              | grep -E "application-groups|application-identifier" -A2 || true
+          done
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
