@@ -40,6 +40,7 @@ jobs:
             --new-bundle ph.telegra.TelegramPlus
 
       - name: Cache Bazel
+        continue-on-error: true
         uses: actions/cache@v4
         with:
           path: /Users/Shared/bazel_cache
@@ -50,6 +51,9 @@ jobs:
       - name: Build the App
         run: |
           set -x
+          set -o pipefail
+          mkdir -p /tmp/tgp-logs
+          exec > >(tee -a /tmp/tgp-logs/build.log) 2>&1
 
           SOURCE_DIR=/Users/Shared/telegram-ios
           mkdir -p /Users/Shared/bazel_cache
@@ -112,6 +116,24 @@ jobs:
             security cms -D -i "$e/embedded.mobileprovision" 2>/dev/null | plutil -p - \
               | grep -E "application-groups|application-identifier" -A2 || true
           done
+
+      - name: Build diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== последние 250 строк лога сборки ==="
+          tail -250 /tmp/tgp-logs/build.log 2>/dev/null || echo "(лог сборки недоступен)"
+          echo "=== диск и кэш Bazel ==="
+          df -h /Users/Shared | tail -1
+          du -sh /Users/Shared/bazel_cache 2>/dev/null || echo "(кэш Bazel отсутствует)"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TelegramPlus-build-log-failed
+          path: /tmp/tgp-logs/build.log
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
