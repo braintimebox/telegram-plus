@@ -738,6 +738,33 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
         Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: logsPath))
 
+        // Telegram Plus diagnostics: mirror the app's own log files into the
+        // app's Documents directory, which is exposed to the Files app (see
+        // UIFileSharingEnabled in Telegram/BUILD). This is the only way to read
+        // the network log on a device that is installed without a Mac.
+        let _ = Logger.shared.collectLogs().startStandalone(next: { logs in
+            guard let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else {
+                return
+            }
+            let diagnosticsPath = documentsPath + "/TelegramPlus-Logs"
+            let _ = try? FileManager.default.createDirectory(atPath: diagnosticsPath, withIntermediateDirectories: true, attributes: nil)
+
+            let info = """
+            bundle: \(Bundle.main.bundleIdentifier ?? "unknown")
+            version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")
+            build: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
+            appGroup: \(BuildConfig.appGroupName(forBaseAppBundleId: baseAppBundleId) ?? "nil")
+            rootPath: \(rootPath)
+            """
+            let _ = try? info.write(toFile: diagnosticsPath + "/diagnostics-info.txt", atomically: true, encoding: .utf8)
+
+            for (name, path) in logs {
+                let destination = diagnosticsPath + "/" + name
+                let _ = try? FileManager.default.removeItem(atPath: destination)
+                let _ = try? FileManager.default.copyItem(atPath: path, toPath: destination)
+            }
+        })
+
         setManagedAudioSessionLogger({ s in
             Logger.shared.log("ManagedAudioSession", s)
             Logger.shared.shortLog("ManagedAudioSession", s)
