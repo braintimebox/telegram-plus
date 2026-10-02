@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: macos-26
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -159,3 +161,30 @@ jobs:
           name: TelegramPlus-${{ env.APP_VERSION }}-dsyms
           path: /Users/Shared/telegram-ios/build/artifacts/TelegramPlus.DSYMs.zip
           retention-days: 30
+
+      # Artifacts need a signed-in browser session and expire after 30 days.
+      # A release gives a permanent, direct download link for the same IPA.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          cd /Users/Shared/telegram-ios/build/artifacts
+
+          TAG="build-${BUILD_NUMBER}"
+          TITLE="Telegram Plus ${APP_VERSION} (build ${BUILD_NUMBER})"
+          NOTES="Unsigned build from commit ${GITHUB_SHA}. Install it with a sideloading tool (Feather, SideStore, AltStore)."
+
+          FILES=(TelegramPlus.ipa)
+          if [ -f TelegramPlus.DSYMs.zip ]; then
+            FILES+=(TelegramPlus.DSYMs.zip)
+          fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" --title "$TITLE" --notes "$NOTES"
+          fi
+
+          echo "=== release URL ==="
+          gh release view "$TAG" --json url,assets -q '.url, (.assets[].name)'
