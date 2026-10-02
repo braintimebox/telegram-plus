@@ -121,7 +121,7 @@ public final class QrCodeScanScreen: ViewController {
         }
     }
     
-    private func dismissWithSession(session: RecentAccountSession?) {
+    fileprivate func dismissWithSession(session: RecentAccountSession?) {
         guard case let .authTransfer(activeSessionsContext) = self.subject else {
             return
         }
@@ -338,6 +338,8 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, ASScrollVie
     private var presentationData: PresentationData
     private weak var controller: QrCodeScanScreen?
     private let subject: QrCodeScanScreen.Subject
+    // Telegram Plus: holds the in-flight approval started from a picked image.
+    private let approveGalleryDisposable = MetaDisposable()
     
     private let previewView: CameraSimplePreviewView
     private let fadeNode: ASDisplayNode
@@ -489,6 +491,11 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, ASScrollVie
         if case .peer = subject {
             self.addSubnode(self.galleryButtonNode)
         }
+        if case .authTransfer = subject {
+            // Telegram Plus: allow confirming a login from a picked image, not only
+            // from the live camera. Used by the QR login flow on the authorised side.
+            self.addSubnode(self.galleryButtonNode)
+        }
         self.addSubnode(self.torchButtonNode)
         self.addSubnode(self.titleNode)
         self.addSubnode(self.textNode)
@@ -521,6 +528,7 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, ASScrollVie
         self.codeDisposable.dispose()
         self.torchDisposable?.dispose()
         self.resolveDisposable.dispose()
+        self.approveGalleryDisposable.dispose()
         self.camera.stopCapture(invalidate: true)
     }
     
@@ -844,16 +852,47 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, ASScrollVie
                         if let image = image as? UIImage {
                             let _ = (recognizeQRCode(in: image)
                             |> deliverOnMainQueue).start(next: { [weak self] result in
-                                if let result = result, let strongSelf = self {
+                                guard let strongSelf = self, let result = result else {
+                                    presentError()
+                                    return
+                                }
+                                // Telegram Plus: a code picked from the gallery during a
+                                // login confirmation carries a login token ("tg://login?token=…"),
+                                // not a t.me link, so it is approved directly instead of being
+                                // resolved as a URL (which rejects login tokens).
+                                switch strongSelf.subject {
+                                case let .authTransfer(activeSessionsContext):
+                                    if let url = URL(string: result), let parsedToken = parseAuthTransferUrl(url) {
+                                        Logger.shared.log("QRLoginGallery", "token decoded from image, approving")
+                                        strongSelf.approveGalleryDisposable.set((approveAuthTransferToken(account: strongSelf.context.account, token: parsedToken, activeSessionsContext: activeSessionsContext)
+                                        |> deliverOnMainQueue).start(next: { session in
+                                            guard let strongSelf = self else {
+                                                return
+                                            }
+                                            Logger.shared.log("QRLoginGallery", "approve succeeded")
+                                            strongSelf.codeWithError = nil
+                                            Queue.mainQueue().after(1.5, {
+                                                activeSessionsContext.loadMore()
+                                            })
+                                            strongSelf.controller?.dismissWithSession(session: session)
+                                        }, error: { _ in
+                                            guard let strongSelf = self else {
+                                                return
+                                            }
+                                            Logger.shared.log("QRLoginGallery", "approve failed")
+                                            strongSelf.codeWithError = result
+                                            strongSelf.updateFocusedRect(nil)
+                                        }))
+                                    } else {
+                                        Logger.shared.log("QRLoginGallery", "image contained no login token")
+                                        presentError()
+                                    }
+                                default:
                                     strongSelf.resolveCode(code: result, completion: { result in
-                                        if result {
-                                            
-                                        } else {
+                                        if !result {
                                             presentError()
                                         }
                                     })
-                                } else {
-                                    presentError()
                                 }
                             })
                         } else {
