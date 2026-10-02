@@ -433,6 +433,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.qrButton = ASButtonNode()
         self.qrButton.setTitle(self.strings.AuthSessions_AddDeviceIntro_Title, with: Font.regular(17.0), with: self.theme.list.itemAccentColor, for: [])
         self.qrButton.accessibilityIdentifier = "Auth.PhoneEntry.QrButton"
+        self.qrButton.isUserInteractionEnabled = true
 
         super.init()
         
@@ -633,6 +634,14 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             AuthorizationLayoutItem(node: self.phoneAndCountryNode, size: CGSize(width: maximumWidth, height: 115.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 30.0, maxValue: 30.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)),
         ]
         
+        // Telegram Plus: the QR login entry is placed by the screen's own layout
+        // system, not pinned under the Continue button. That button is positioned
+        // inside the keyboard inset, so anything attached below it ends up under
+        // the keyboard and never receives a tap. The layout engine also keeps the
+        // items clear of the Continue button by construction (additionalBottomInset
+        // is reserved for it), so the two cannot overlap.
+        items.append(AuthorizationLayoutItem(node: self.qrButton, size: CGSize(width: maximumWidth - inset * 2.0, height: 34.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 14.0, maxValue: 14.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+        
         if layout.size.width > 320.0 {
             items.insert(AuthorizationLayoutItem(node: self.animationNode, size: animationSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
             self.proceedNode.isHidden = false
@@ -662,8 +671,6 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         
         transition.updateFrame(node: self.proceedNode, frame: buttonFrame)
         
-        let qrButtonHeight: CGFloat = 34.0
-        transition.updateFrame(node: self.qrButton, frame: CGRect(origin: CGPoint(x: buttonFrame.minX, y: buttonFrame.maxY + 2.0), size: CGSize(width: buttonFrame.width, height: qrButtonHeight)))
         self.qrButton.isHidden = self.proceedNode.isHidden
         
         if let qrNode = self.qrNode {
@@ -713,6 +720,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     }
     
     @objc private func qrPressed() {
+        Logger.shared.log("QRLogin", "QR entry tapped")
         if self.qrNode != nil {
             self.hideQrCode()
         } else {
