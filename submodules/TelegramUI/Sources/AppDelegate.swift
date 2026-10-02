@@ -664,7 +664,9 @@ extension Bundle {
                             recaptchaBundleIdentifierOverride = recaptchaRegisteredBundleIdentifier
                             Logger.shared.log("App \(self.episodeId)", "Recaptcha: execute action=\(method)")
                             recaptchaClient.execute(withAction: recaptchaAction) { token, error in
-                                recaptchaBundleIdentifierOverride = nil
+                                defer {
+                                    recaptchaBundleIdentifierOverride = nil
+                                }
                                 if let token {
                                     subscriber.putNext(token)
                                     Logger.shared.log("App \(self.episodeId)", "RecaptchaClient executed successfully, token length \(token.count)")

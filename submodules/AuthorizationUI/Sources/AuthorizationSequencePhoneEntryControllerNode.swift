@@ -430,8 +430,8 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.proceedNode.isEnabled = false
         self.proceedNode.accessibilityIdentifier = "Auth.PhoneEntry.ContinueButton"
         
-        self.qrButton = ASButtonNode()
-        self.qrButton.setTitle(self.strings.AuthSessions_AddDeviceIntro_Title, with: Font.regular(17.0), with: self.theme.list.itemAccentColor, for: [])
+        self.qrButton = HighlightableButtonNode()
+        self.qrButton.setAttributedTitle(NSAttributedString(string: self.strings.AuthSessions_AddDeviceIntro_Title, font: Font.regular(17.0), textColor: self.theme.list.itemAccentColor, paragraphAlignment: .center), for: [])
         self.qrButton.accessibilityIdentifier = "Auth.PhoneEntry.QrButton"
         self.qrButton.isUserInteractionEnabled = true
 
