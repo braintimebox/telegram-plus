@@ -214,6 +214,46 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     )
 }
 
+// MARK: - Telegram Plus
+
+// Google's reCAPTCHA Enterprise SDK identifies the calling application through
+// -[NSBundle mainBundle] bundleIdentifier and refuses to run when that identifier
+// is not registered for the site key that Telegram's server supplied. It fails
+// with "Invalid Package Name.". A re-signed build (Feather, AltStore) keeps its
+// own bundle identifier, so the signup captcha can never be presented and the
+// authorization request stalls until its 20 second timeout fires.
+//
+// Presenting the registered identifier for the duration of the SDK call lets the
+// captcha render. The user still has to solve it and the server still validates
+// the result: nothing about the captcha check itself is bypassed.
+private let recaptchaRegisteredBundleIdentifier = "ph.telegra.Telegraph"
+private var recaptchaBundleIdentifierOverride: String?
+private var recaptchaBundleIdentifierSwizzled = false
+
+private func installRecaptchaBundleIdentifierOverrideIfNeeded() {
+    if recaptchaBundleIdentifierSwizzled {
+        return
+    }
+    recaptchaBundleIdentifierSwizzled = true
+
+    guard let original = class_getInstanceMethod(Bundle.self, #selector(getter: Bundle.bundleIdentifier)),
+          let replacement = class_getInstanceMethod(Bundle.self, #selector(Bundle.tgp_recaptchaIdentifier)) else {
+        Logger.shared.log("Recaptcha", "failed to install bundle identifier override")
+        return
+    }
+    method_exchangeImplementations(original, replacement)
+    Logger.shared.log("Recaptcha", "bundle identifier override installed")
+}
+
+extension Bundle {
+    @objc fileprivate func tgp_recaptchaIdentifier() -> String? {
+        if let override = recaptchaBundleIdentifierOverride {
+            return override
+        }
+        return self.tgp_recaptchaIdentifier()
+    }
+}
+
 @objc(AppDelegate) class AppDelegate: UIResponder, UIApplicationDelegate, PKPushRegistryDelegate, UNUserNotificationCenterDelegate, URLSessionDelegate, URLSessionTaskDelegate {
     @objc var window: UIWindow?
     var nativeWindow: (UIWindow & WindowHost)?
@@ -587,12 +627,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                         recaptchaClient = Promise<RecaptchaClient>()
                         self.recaptchaClientsBySiteKey[siteKey] = recaptchaClient
                         
+                        Logger.shared.log("App \(self.episodeId)", "Recaptcha: fetch client, method=\(method) siteKey=\(String(siteKey.prefix(12))) realBundleId=\(Bundle.main.bundleIdentifier ?? "nil")")
+                        installRecaptchaBundleIdentifierOverrideIfNeeded()
+                        recaptchaBundleIdentifierOverride = recaptchaRegisteredBundleIdentifier
                         Recaptcha.fetchClient(withSiteKey: siteKey) { client, error in
                             Queue.mainQueue().async {
+                                recaptchaBundleIdentifierOverride = nil
                                 guard let client else {
                                     Logger.shared.log("App \(self.episodeId)", "RecaptchaClient creation error: \(String(describing: error)).")
                                     return
                                 }
+                                Logger.shared.log("App \(self.episodeId)", "RecaptchaClient created")
                                 recaptchaClient.set(.single(client))
                             }
                         }
@@ -616,10 +661,13 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                                 
                                 return EmptyDisposable
                             }
+                            recaptchaBundleIdentifierOverride = recaptchaRegisteredBundleIdentifier
+                            Logger.shared.log("App \(self.episodeId)", "Recaptcha: execute action=\(method)")
                             recaptchaClient.execute(withAction: recaptchaAction) { token, error in
+                                recaptchaBundleIdentifierOverride = nil
                                 if let token {
                                     subscriber.putNext(token)
-                                    Logger.shared.log("App \(self.episodeId)", "RecaptchaClient executed successfully")
+                                    Logger.shared.log("App \(self.episodeId)", "RecaptchaClient executed successfully, token length \(token.count)")
                                 } else {
                                     subscriber.putNext(nil)
                                     Logger.shared.log("App \(self.episodeId)", "RecaptchaClient execute error: \(String(describing: error))")

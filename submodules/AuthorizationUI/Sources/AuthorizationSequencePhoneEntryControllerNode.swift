@@ -319,6 +319,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     private let phoneAndCountryNode: PhoneAndCountryNode
     private let contactSyncNode: ContactSyncNode
     private let proceedNode: SolidRoundedButtonNode
+    private let qrButton: ASButtonNode
     
     private var qrNode: ASImageNode?
     private let exportTokenDisposable = MetaDisposable()
@@ -428,6 +429,10 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.proceedNode.progressType = .embedded
         self.proceedNode.isEnabled = false
         self.proceedNode.accessibilityIdentifier = "Auth.PhoneEntry.ContinueButton"
+        
+        self.qrButton = ASButtonNode()
+        self.qrButton.setTitle(self.strings.AuthSessions_AddDeviceIntro_Title, with: Font.regular(17.0), with: self.theme.list.itemAccentColor, for: [])
+        self.qrButton.accessibilityIdentifier = "Auth.PhoneEntry.QrButton"
 
         super.init()
         
@@ -444,6 +449,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.addSubnode(self.phoneAndCountryNode)
         self.addSubnode(self.contactSyncNode)
         self.addSubnode(self.proceedNode)
+        self.addSubnode(self.qrButton)
         self.addSubnode(self.animationNode)
         self.addSubnode(self.managedAnimationNode)
         self.contactSyncNode.isHidden = true
@@ -506,9 +512,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         super.didLoad()
         
         self.titleNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.debugTap(_:))))
-        #if DEBUG && false
-        self.noticeNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.debugQrTap(_:))))
-        #endif
+        self.qrButton.addTarget(self, action: #selector(self.qrPressed), forControlEvents: .touchUpInside)
     }
     
     private var animationSnapshotView: UIView?
@@ -658,6 +662,14 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         
         transition.updateFrame(node: self.proceedNode, frame: buttonFrame)
         
+        let qrButtonHeight: CGFloat = 34.0
+        transition.updateFrame(node: self.qrButton, frame: CGRect(origin: CGPoint(x: buttonFrame.minX, y: buttonFrame.maxY + 2.0), size: CGSize(width: buttonFrame.width, height: qrButtonHeight)))
+        self.qrButton.isHidden = self.proceedNode.isHidden
+        
+        if let qrNode = self.qrNode {
+            transition.updateFrame(node: qrNode, frame: CGRect(x: floorToScreenPixels((layout.size.width - 200.0) / 2.0), y: floor((layout.size.height - 200.0) / 2.0), width: 200.0, height: 200.0))
+        }
+        
         self.animationNode.updateLayout(size: animationSize)
         
         let _ = layoutAuthorizationItems(bounds: CGRect(origin: CGPoint(x: 0.0, y: insets.top), size: CGSize(width: layout.size.width, height: layout.size.height - insets.top - insets.bottom - additionalBottomInset)), items: items, transition: transition, failIfDoesNotFit: false)
@@ -700,21 +712,45 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         }
     }
     
-    @objc private func debugQrTap(_ recognizer: UITapGestureRecognizer) {
-        if self.qrNode == nil {
-            let qrNode = ASImageNode()
-            qrNode.frame = CGRect(origin: CGPoint(x: 16.0, y: 64.0 + 16.0), size: CGSize(width: 200.0, height: 200.0))
-            self.qrNode = qrNode
-            self.addSubnode(qrNode)
-            
-            self.refreshQrToken()
+    @objc private func qrPressed() {
+        if self.qrNode != nil {
+            self.hideQrCode()
+        } else {
+            self.showQrCode()
         }
+    }
+    
+    // Telegram Plus: QR login was previously reachable only through a debug-only
+    // tap gesture, so the flow existed in the binary but had no user-facing entry
+    // point. This is the same flow, driven by a real button.
+    private func showQrCode() {
+        guard self.qrNode == nil else {
+            return
+        }
+        Logger.shared.log("QRLogin", "user requested QR login on phone entry screen")
+        let qrNode = ASImageNode()
+        qrNode.contentMode = .center
+        self.qrNode = qrNode
+        self.addSubnode(qrNode)
+        self.refreshQrToken()
+        self.setNeedsLayout()
+    }
+    
+    private func hideQrCode() {
+        Logger.shared.log("QRLogin", "QR login cancelled")
+        self.exportTokenDisposable.set(nil)
+        self.tokenEventsDisposable.set(nil)
+        self.qrNode?.removeFromSupernode()
+        self.qrNode = nil
+        self.setNeedsLayout()
     }
     
     private func refreshQrToken() {
         guard let account = self.account else {
+            Logger.shared.log("QRLogin", "no account, cannot export token")
             return
         }
+        Logger.shared.log("QRLogin", "requesting export token")
         let sharedContext = self.sharedContext
         let tokenSignal = sharedContext.activeAccountContexts
         |> castError(ExportAuthTransferTokenError.self)
@@ -737,6 +773,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             }
             switch result {
             case let .displayToken(token):
+                Logger.shared.log("QRLogin", "exported login token, valid until \(token.validUntil)")
                 var tokenString = token.value.base64EncodedString()
                 //print("export token \(tokenString)")
                 tokenString = tokenString.replacingOccurrences(of: "+", with: "-")
@@ -773,6 +810,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
                 }))
                 strongSelf.refreshQrToken()
             case .loggedIn, .passwordRequested:
+                Logger.shared.log("QRLogin", "login token accepted by another device")
                 strongSelf.exportTokenDisposable.set(nil)
             }
         }))

@@ -194,6 +194,7 @@ public func sendAuthorizationCode(accountManager: AccountManager<TelegramAccount
         
         let codeAndAccount = account.network.request(sendCode, automaticFloodWait: false)
         |> map { result -> (SendCodeResult, UnauthorizedAccount) in
+            Logger.shared.log("Authorization", "sendCode succeeded: \(String(describing: result))")
             return (.sentCode(result), account)
         }
         |> `catch` { error -> Signal<(SendCodeResult, UnauthorizedAccount), MTRpcError> in
@@ -228,6 +229,7 @@ public func sendAuthorizationCode(accountManager: AccountManager<TelegramAccount
             }
         }
         |> `catch` { error -> Signal<(SendCodeResult, UnauthorizedAccount), AuthorizationCodeRequestError> in
+            Logger.shared.log("Authorization", "sendCode failed: code \(error.errorCode), description \(error.errorDescription ?? "nil")")
             if error.errorDescription.hasPrefix("FLOOD_WAIT") {
                 return .fail(.limitExceeded)
             } else if error.errorDescription == "PHONE_NUMBER_INVALID" {
