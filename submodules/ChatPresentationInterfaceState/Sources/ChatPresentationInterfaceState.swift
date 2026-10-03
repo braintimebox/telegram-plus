@@ -448,26 +448,10 @@ public final class ChatPresentationInterfaceState: Equatable {
             case topicListPanelLocation
         }
         
-        // Telegram Plus: the side topics panel is never used (ТЗ п.2). This getter
-        // maps `.side` to `.top` at the value's source, so no consumer can take the
-        // `.side` branch while the `if`/`return` structure at every call site stays
-        // reachable for the compiler. Folding the condition at the call sites instead
-        // compiles to "will never be executed", which this project treats as an error
-        // — that build failed (3750).
-        private var storageTopicListPanelLocation: TopicListPanelLocation = .top
-        public var topicListPanelLocation: TopicListPanelLocation {
-            get {
-                // Only `.side` is forbidden; `.top`/`.bottom` pass through so the
-                // top/bottom panel toggle keeps working (ТЗ: do not change Topics).
-                return self.storageTopicListPanelLocation == .side ? .top : self.storageTopicListPanelLocation
-            }
-            set {
-                self.storageTopicListPanelLocation = newValue
-            }
-        }
+        public var topicListPanelLocation: TopicListPanelLocation
         
         public init(topicListPanelLocation: TopicListPanelLocation) {
-            self.storageTopicListPanelLocation = topicListPanelLocation
+            self.topicListPanelLocation = topicListPanelLocation
         }
         
         public init(from decoder: any Decoder) throws {
