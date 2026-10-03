@@ -821,6 +821,12 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
                 Logger.shared.log("QRLogin", "login token accepted by another device")
                 strongSelf.exportTokenDisposable.set(nil)
             }
+        }, error: { error in
+            // Telegram Plus: the export signal carries ExportAuthTransferTokenError.
+            // Without an error handler the failure is dropped silently — no QR
+            // code appears, nothing is written to the log, and the tap looks
+            // like it did nothing at all.
+            Logger.shared.log("QRLogin", "export token failed: \(error)")
         }))
     }
 }

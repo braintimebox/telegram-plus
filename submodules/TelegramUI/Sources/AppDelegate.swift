@@ -792,27 +792,39 @@ extension Bundle {
         // app's Documents directory, which is exposed to the Files app (see
         // UIFileSharingEnabled in Telegram/BUILD). This is the only way to read
         // the network log on a device that is installed without a Mac.
-        let _ = Logger.shared.collectLogs().startStandalone(next: { logs in
-            guard let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else {
-                return
-            }
-            let diagnosticsPath = documentsPath + "/TelegramPlus-Logs"
-            let _ = try? FileManager.default.createDirectory(atPath: diagnosticsPath, withIntermediateDirectories: true, attributes: nil)
+        //
+        // The mirror is refreshed on a timer rather than once at launch: the
+        // copy the user opens in Files has to show what is happening right now.
+        // A launch-only snapshot is useless for exactly the case it exists for —
+        // a tap that produced no visible reaction leaves no trace in it.
+        func mirrorTelegramPlusLogs() {
+            let _ = Logger.shared.collectLogs().startStandalone(next: { logs in
+                guard let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else {
+                    return
+                }
+                let diagnosticsPath = documentsPath + "/TelegramPlus-Logs"
+                let _ = try? FileManager.default.createDirectory(atPath: diagnosticsPath, withIntermediateDirectories: true, attributes: nil)
 
-            let info = """
-            bundle: \(Bundle.main.bundleIdentifier ?? "unknown")
-            version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")
-            build: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
-            appGroup: \(BuildConfig.appGroupName(forBaseAppBundleId: baseAppBundleId) ?? "nil")
-            rootPath: \(rootPath)
-            """
-            let _ = try? info.write(toFile: diagnosticsPath + "/diagnostics-info.txt", atomically: true, encoding: .utf8)
+                let info = """
+                bundle: \(Bundle.main.bundleIdentifier ?? "unknown")
+                version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")
+                build: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
+                appGroup: \(BuildConfig.appGroupName(forBaseAppBundleId: baseAppBundleId) ?? "nil")
+                rootPath: \(rootPath)
+                mirroredAt: \(Date())
+                """
+                let _ = try? info.write(toFile: diagnosticsPath + "/diagnostics-info.txt", atomically: true, encoding: .utf8)
 
-            for (name, path) in logs {
-                let destination = diagnosticsPath + "/" + name
-                let _ = try? FileManager.default.removeItem(atPath: destination)
-                let _ = try? FileManager.default.copyItem(atPath: path, toPath: destination)
-            }
+                for (name, path) in logs {
+                    let destination = diagnosticsPath + "/" + name
+                    let _ = try? FileManager.default.removeItem(atPath: destination)
+                    let _ = try? FileManager.default.copyItem(atPath: path, toPath: destination)
+                }
+            })
+        }
+        mirrorTelegramPlusLogs()
+        let _ = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true, block: { _ in
+            mirrorTelegramPlusLogs()
         })
 
         setManagedAudioSessionLogger({ s in
