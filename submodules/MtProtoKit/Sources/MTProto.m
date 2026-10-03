@@ -957,6 +957,10 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
         }
         
         if (!([self canAskForServiceTransactions] || [self canAskForTransactions])) {
+            // Telegram Plus diagnostics: this exit used to be silent, which made a
+            // queued request look like it simply vanished (the app logged "add
+            // request" and nothing else, ever). Name the gate that dropped it.
+            MTLogWithPrefix(_getLogPrefix, @"[MTProto#%p@%p dropped exit: cannot ask for transactions] (service needs parque: %d)", self, _context, _useUnauthorizedMode);
             if (transactionReady) {
                 transactionReady(nil);
             }
@@ -969,6 +973,10 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
             authKey = [self getAuthKeyForCurrentScheme:scheme createIfNeeded:true authInfoSelector:&authInfoSelector];
         
             if (authKey == nil) {
+                // Telegram Plus diagnostics: silent exit — the transport had no
+                // auth key yet, so every queued request is dropped here without a
+                // trace. Log it, otherwise this is indistinguishable from a hang.
+                MTLogWithPrefix(_getLogPrefix, @"[MTProto#%p@%p dropped exit: authKey is nil]", self, _context);
                 if (transactionReady) {
                     transactionReady(nil);
                 }
@@ -1138,6 +1146,13 @@ static const NSUInteger MTMaxUnacknowledgedMessageCount = 64;
             
             if (monotonityViolated || saltSetEmpty)
             {
+                // Telegram Plus diagnostics: only the monotonity case was logged.
+                // An empty auth salt drops the whole transaction the same way and
+                // was completely invisible — a request that reached this point
+                // looked identical to one that was never answered.
+                if (saltSetEmpty) {
+                    MTLogWithPrefix(_getLogPrefix, @"[MTProto#%p@%p dropped exit: salt set empty, transaction discarded]", self, _context);
+                }
                 for (MTMessageTransaction *messageTransaction in messageTransactions)
                 {
                     if (messageTransaction.completion)

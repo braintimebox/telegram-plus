@@ -322,6 +322,16 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     private let qrButton: ASButtonNode
     
     private var qrNode: ASImageNode?
+    // Telegram Plus: true from the moment a token export starts until it returns.
+    // A tap inside that window must not be read as "cancel": the user taps again
+    // precisely because nothing has appeared yet, and cancelling here disposed the
+    // in-flight request before the server could answer. That is what made a single
+    // tap look like it did nothing.
+    private var qrExportInFlight = false
+    // Timestamp of the last export start. The in-flight state must expire on its
+    // own: while the transport bug is present the request never returns, and a
+    // permanent "ignore" would leave the button dead with no way to cancel.
+    private var qrExportStartedAt: Double = 0
     private let exportTokenDisposable = MetaDisposable()
     private let tokenEventsDisposable = MetaDisposable()
     var accountUpdated: ((UnauthorizedAccount) -> Void)?
@@ -722,7 +732,13 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     @objc private func qrPressed() {
         Logger.shared.log("QRLogin", "QR entry tapped")
         if self.qrNode != nil {
+            // A QR is already on screen: the tap means "close".
             self.hideQrCode()
+        } else if self.qrExportInFlight && CACurrentMediaTime() - self.qrExportStartedAt < 15.0 {
+            // A token export is still running. Ignore the tap instead of cancelling:
+            // cancelling here is exactly what made the button appear dead, because
+            // the user taps again while the first request is still waiting.
+            Logger.shared.log("QRLogin", "tap ignored: export already in flight")
         } else {
             self.showQrCode()
         }
@@ -746,6 +762,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     
     private func hideQrCode() {
         Logger.shared.log("QRLogin", "QR login cancelled")
+        self.qrExportInFlight = false
         self.exportTokenDisposable.set(nil)
         self.tokenEventsDisposable.set(nil)
         self.qrNode?.removeFromSupernode()
@@ -759,6 +776,8 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             return
         }
         Logger.shared.log("QRLogin", "requesting export token")
+        self.qrExportInFlight = true
+        self.qrExportStartedAt = CACurrentMediaTime()
         let sharedContext = self.sharedContext
         let tokenSignal = sharedContext.activeAccountContexts
         |> castError(ExportAuthTransferTokenError.self)
@@ -782,6 +801,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             switch result {
             case let .displayToken(token):
                 Logger.shared.log("QRLogin", "exported login token, valid until \(token.validUntil)")
+                strongSelf.qrExportInFlight = false
                 var tokenString = token.value.base64EncodedString()
                 //print("export token \(tokenString)")
                 tokenString = tokenString.replacingOccurrences(of: "+", with: "-")
@@ -819,14 +839,16 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
                 strongSelf.refreshQrToken()
             case .loggedIn, .passwordRequested:
                 Logger.shared.log("QRLogin", "login token accepted by another device")
+                strongSelf.qrExportInFlight = false
                 strongSelf.exportTokenDisposable.set(nil)
             }
-        }, error: { error in
+        }, error: { [weak self] error in
             // Telegram Plus: the export signal carries ExportAuthTransferTokenError.
             // Without an error handler the failure is dropped silently — no QR
             // code appears, nothing is written to the log, and the tap looks
             // like it did nothing at all.
             Logger.shared.log("QRLogin", "export token failed: \(error)")
+            self?.qrExportInFlight = false
         }))
     }
 }
