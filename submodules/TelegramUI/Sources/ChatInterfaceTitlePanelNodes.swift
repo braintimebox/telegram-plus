@@ -242,6 +242,17 @@ func headerTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterf
     guard let peerId = chatPresentationInterfaceState.chatLocation.peerId else {
         return nil
     }
+    // Telegram Plus: chats with topics get no topics panel at all (ТЗ п.2 + п.3).
+    // This is the header strip (top/bottom tab bar). The value of
+    // `topicListPanelLocation` is no longer consulted here, so the strip cannot
+    // come back by switching the mode. Ordinary chats fall through to `return nil`
+    // below and are unaffected.
+    if let channel = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isForum || channel.isMonoForum {
+        return nil
+    }
+    if let user = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, let botInfo = user.botInfo, botInfo.flags.contains(.hasForum) {
+        return nil
+    }
     if chatPresentationInterfaceState.subject?.isService ?? false {
         return nil
     }
@@ -358,6 +369,16 @@ func headerTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterf
 
 func floatingTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, controllerInteraction: ChatControllerInteraction?, interfaceInteraction: ChatPanelInterfaceInteraction?, force: Bool) -> ChatFloatingTopicsPanel? {
     guard let peerId = chatPresentationInterfaceState.chatLocation.peerId else {
+        return nil
+    }
+    // Telegram Plus: chats with topics get no topics panel at all (ТЗ п.2 + п.3).
+    // This is the large side bar; together with the header strip above, neither
+    // panel is ever built, so the flag `topicListPanelLocation` cannot bring
+    // either one back. Ordinary chats fall through to `return nil` below.
+    if let channel = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isForum || channel.isMonoForum {
+        return nil
+    }
+    if let user = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, let botInfo = user.botInfo, botInfo.flags.contains(.hasForum) {
         return nil
     }
     if chatPresentationInterfaceState.subject?.isService ?? false {
