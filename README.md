@@ -240,23 +240,16 @@ python3 build-system/Make/Make.py --overrideXcodeVersion build ... # Don't check
 
 # URL schemes
 
-Source of truth: the `plist_fragment(name = "UrlTypesInfoPlist")` in `Telegram/BUILD`. The Bazel build takes the schemes from there - `Info.plist`, `InfoBazel.plist` and `APP_SPECIFIC_URL_SCHEME` do not affect the product.
+Difference from stock Telegram: upstream registers `tg` (plus `tonsite` for TON sites in the Bazel template). This fork adds **`tgplus`**, so a link can address Telegram Plus instead of the official app - with both installed, `tg://` may open either one.
 
-| scheme | reaches Telegram Plus? |
-| --- | --- |
-| `tgplus` | **yes, always** |
-| `tg` | not reliably - the official app registers it too |
-| `telegram`, `ton` | no (legacy / TON) |
-| `tonsite` | no - routed into the web/TON branch |
-
-Address the fork with its own scheme:
+Where it is added - the Bazel build reads the schemes here, not from the plists: `plist_fragment(name = "UrlTypesInfoPlist")` in `Telegram/BUILD`.
 
 ```
 tgplus://privatepost?channel=<channel_id>&post=<message_id>
 tgplus://privatepost?channel=<channel_id>&thread=<thread_id>&post=<message_id>
 ```
 
-`tgplus://privatepost?channel=3911407661&post=23236` opens that message: the handler converts it to `t.me/c/<channel>/<post>` (`OpenUrl.swift`, `case "privatepost"`). Every host that works under `tg://` works under `tgplus://`; the gates in `OpenUrl.swift` and `AppDelegate.swift` accept `tg`, `tgplus` and the configured app-specific scheme. Inner host parsers that still match `tg` only (`UrlHandling.swift`, `OpenUrl.swift` ~line 114) handle other hosts and do not affect `privatepost`.
+`tgplus://privatepost?channel=3911407661&post=23236` opens that message: it is converted to `t.me/c/<channel>/<post>` (`OpenUrl.swift`, `case "privatepost"`). Every host that works under `tg://` works under `tgplus://`; the gates in `OpenUrl.swift` and `AppDelegate.swift` accept `tg`, `tgplus` and the configured app-specific scheme. Inner host parsers that still match `tg` only (`UrlHandling.swift`, `OpenUrl.swift` ~line 114) handle other hosts and do not affect `privatepost`.
 
 Verify a built IPA:
 
