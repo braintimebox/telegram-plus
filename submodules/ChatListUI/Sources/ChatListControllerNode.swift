@@ -2322,6 +2322,7 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
     }
     
     func makeInlineChatList(location: ChatListControllerLocation) -> ChatListContainerNode {
+        Logger.shared.log("TelegramPlus", "makeInlineChatList: \(String(describing: location))")
         var forumPeerId: EnginePeer.Id?
         if case let .forum(peerId) = location {
             forumPeerId = peerId

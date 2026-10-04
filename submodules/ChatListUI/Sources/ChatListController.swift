@@ -1435,7 +1435,12 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                         scrollToEndIfExists = true
                     }
                     
-                    var openAsInlineForum = true
+                    // Telegram Plus: a forum is never opened in the inline layout (ТЗ п.2 + п.3).
+                    // Inline mode keeps the chat list on screen as a 72pt column on the left
+                    // and its folder tab strip on top of the forum's topics. Opening the forum
+                    // as a regular pushed screen leaves neither strip around a group, while the
+                    // folder list itself keeps working on the chat list.
+                    var openAsInlineForum = false
                     
                     if case let .channel(channel) = peer, channel.flags.contains(.isMonoforum) {
                         openAsInlineForum = false
@@ -1445,6 +1450,10 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                         if let cachedData = cachedPeerData as? CachedChannelData, case let .known(viewForumAsMessages) = cachedData.viewForumAsMessages, viewForumAsMessages {
                             openAsInlineForum = false
                         }
+                    }
+                    
+                    if case let .channel(channel) = peer, channel.isForum {
+                        Logger.shared.log("TelegramPlus", "forum open decision: inline=\(openAsInlineForum) displayForumAsTabs=\(channel.flags.contains(.displayForumAsTabs)) thread=\(threadId == nil ? "none" : "set")")
                     }
                     
                     if openAsInlineForum, case let .channel(channel) = peer, channel.isForum, threadId == nil {
@@ -3719,6 +3728,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
     }
     
     public func setInlineChatList(location: ChatListControllerLocation?, animated: Bool = true) {
+        Logger.shared.log("TelegramPlus", "setInlineChatList: \(String(describing: location))")
         if let location {
             let inlineNode = self.chatListDisplayNode.makeInlineChatList(location: location)
             let pendingSecondaryContext = ChatListLocationContext(

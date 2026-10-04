@@ -456,11 +456,7 @@ public final class ChatPresentationInterfaceState: Equatable {
         
         public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            // Telegram Plus: the side topics panel is never used. Coerce any
-            // persisted .side to .top at decode time so the left strip cannot
-            // reappear from stored per-chat state.
-            let rawValue = try container.decode(Int32.self, forKey: .topicListPanelLocation)
-            self.topicListPanelLocation = TopicListPanelLocation(rawValue: rawValue) == .side ? .top : (TopicListPanelLocation(rawValue: rawValue) ?? .top)
+            self.topicListPanelLocation = TopicListPanelLocation(rawValue: try container.decode(Int32.self, forKey: .topicListPanelLocation)) ?? .top
         }
         
         public func encode(to encoder: any Encoder) throws {

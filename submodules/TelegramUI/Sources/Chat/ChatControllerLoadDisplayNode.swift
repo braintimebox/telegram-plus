@@ -4826,11 +4826,10 @@ extension ChatControllerImpl {
             }
             self.updateChatPresentationInterfaceState(animated: true, interactive: true, { presentationInterfaceState in
                 var persistentData = presentationInterfaceState.persistentData
-                // Telegram Plus: .side is removed from the cycle so the side
-                // topics panel cannot be re-enabled at runtime. Upstream default
-                // (.top) is preserved; the top/bottom header panel still works.
                 switch persistentData.topicListPanelLocation {
-                case .top, .side:
+                case .top:
+                    persistentData.topicListPanelLocation = .side
+                case .side:
                     persistentData.topicListPanelLocation = .bottom
                 case .bottom:
                     persistentData.topicListPanelLocation = .top
