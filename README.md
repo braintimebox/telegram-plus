@@ -132,57 +132,25 @@ push to `main` and the app is built and published - see `.github/workflows/`.
 
 # URL schemes
 
-Telegram Plus registers these URL schemes (`CFBundleURLTypes` in `Telegram/Telegram-iOS/Info.plist` and `InfoBazel.plist`):
+Source of truth: the `plist_fragment(name = "UrlTypesInfoPlist")` in `Telegram/BUILD`. The Bazel build takes the schemes from there - `Info.plist`, `InfoBazel.plist` and `APP_SPECIFIC_URL_SCHEME` do not affect the product.
 
-| scheme | purpose | reaches Telegram Plus? |
-| --- | --- | --- |
-| `telegram` | legacy upstream scheme | no - kept only for compatibility |
-| `tg` | upstream scheme, shared with the official Telegram app | not reliably: when both apps are installed, iOS decides which one handles it |
-| `tgplus` | **app-specific scheme of this fork** | **yes, always** |
-| `ton` | TON, upstream | not for chat links |
-| `tonsite` | TON sites, upstream | **no - never use as the app-specific scheme**: `OpenUrl.swift` routes `tonsite` into the web/TON branch, so it can never reach the `tg://`-style handler |
+| scheme | reaches Telegram Plus? |
+| --- | --- |
+| `tgplus` | **yes, always** |
+| `tg` | not reliably - the official app registers it too |
+| `telegram`, `ton` | no (legacy / TON) |
+| `tonsite` | no - routed into the web/TON branch |
 
-## Addressing Telegram Plus instead of the official app
-
-Because the official Telegram app and Telegram Plus both claim `tg`, a `tg://` link may open either one. Use the fork's own scheme to address Telegram Plus unambiguously:
+Address the fork with its own scheme:
 
 ```
 tgplus://privatepost?channel=<channel_id>&post=<message_id>
 tgplus://privatepost?channel=<channel_id>&thread=<thread_id>&post=<message_id>
 ```
 
-Example:
+`tgplus://privatepost?channel=3911407661&post=23236` opens that message: the handler converts it to `t.me/c/<channel>/<post>` (`OpenUrl.swift`, `case "privatepost"`). Every host that works under `tg://` works under `tgplus://`; the gates in `OpenUrl.swift` and `AppDelegate.swift` accept `tg`, `tgplus` and the configured app-specific scheme. Inner host parsers that still match `tg` only (`UrlHandling.swift`, `OpenUrl.swift` ~line 114) handle other hosts and do not affect `privatepost`.
 
-```
-tgplus://privatepost?channel=3911407661&post=23236
-```
-
-The handler (`submodules/TelegramUI/Sources/OpenUrl.swift`, `case "privatepost"`) converts this into the canonical internal form `t.me/c/<channel_id>/<message_id>` and opens that message.
-
-Any host that works under `tg://` also works under `tgplus://`: the gates in `OpenUrl.swift` and `AppDelegate.swift` accept `tg`, `tgplus` and the configured app-specific scheme. A few inner host parsers (`UrlHandling.swift`, `OpenUrl.swift` line 114) still match `tg` only - those handle other hosts and do not affect `privatepost`.
-
-## How the scheme is configured
-
-The Bazel build generates the app's `CFBundleURLTypes` from a `plist_fragment` in `Telegram/BUILD` (`name = "UrlTypesInfoPlist"`). That fragment hardcodes the compatibility list and its template receives only `telegram_bundle_id` - there is no variable for the app-specific scheme at all:
-
-```
-<key>CFBundleURLSchemes</key>
-<array>
-    <string>tg</string>
-    <string>tonsite</string>
-    <string>tgplus</string>   <!-- Telegram Plus -->
-</array>
-```
-
-Consequences, all measured on built IPAs:
-
-- `Telegram/Telegram-iOS/Info.plist` and `InfoBazel.plist` are **not** the source of the built schemes. Builds 3758 (with `tgplus` written literally into both) still shipped `['tg', 'tonsite']`.
-- `export APP_SPECIFIC_URL_SCHEME="tgplus"` in the CI build step changed nothing either (build 3759).
-- Adding `tgplus` to the fragment in `Telegram/BUILD` worked: build 3761 ships `['tg', 'tonsite', 'tgplus']`.
-
-So: to change the fork's URL schemes, edit the fragment in `Telegram/BUILD`. The `Info.plist`/`InfoBazel.plist` entries and the JSON/env configuration do not affect the Bazel-built product.
-
-To verify a built IPA:
+Verify a built IPA:
 
 ```
 unzip -p TelegramPlus.ipa Payload/Telegram.app/Info.plist | plutil -p - | grep -A4 CFBundleURLSchemes
