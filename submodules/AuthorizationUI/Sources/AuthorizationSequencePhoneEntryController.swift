@@ -1,4 +1,6 @@
 import Foundation
+import CoreImage
+import PhotosUI
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -156,6 +158,9 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
             }
             strongSelf.account = account
             strongSelf.accountUpdated?(account)
+        }
+        self.controllerNode.qrAction = { [weak self] in
+            self?.presentQrImagePicker()
         }
         self.controllerNode.retryPasskey = { [weak self] in
             guard let self else {
@@ -436,5 +441,100 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
     
     public func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
         controller.dismiss(animated: true, completion: nil)
+    }
+}
+
+
+// Telegram Plus: log in by reading a login code from a picture, instead of typing a
+// phone number. The code is a QR carrying "tg://login?token=..." shown by a client
+// that is already authorised; the user keeps it as a screenshot and picks it here.
+// Reading the image needs no account, and the login goes through the unauthorized
+// engine's importAuthTransferToken (added by this fork).
+extension AuthorizationSequencePhoneEntryController: PHPickerViewControllerDelegate {
+    fileprivate func presentQrImagePicker() {
+        Logger.shared.log("QRLoginGallery", "opening the image picker")
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        self.present(picker, in: .window(.root), with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet))
+    }
+
+    public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let result = results.first else {
+            Logger.shared.log("QRLoginGallery", "no image picked")
+            return
+        }
+        let provider = result.itemProvider
+        let typeIdentifier = provider.registeredTypeIdentifiers.first(where: { $0.hasPrefix("public.image") }) ?? "public.image"
+        provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] data, _ in
+            guard let data = data, let image = UIImage(data: data) else {
+                Logger.shared.log("QRLoginGallery", "picked item is not an image")
+                return
+            }
+            Queue.mainQueue().async {
+                self?.handleQrImage(image)
+            }
+        }
+    }
+
+    fileprivate func handleQrImage(_ image: UIImage) {
+        guard let payload = qrPayload(in: image) else {
+            Logger.shared.log("QRLoginGallery", "no QR code found in the image")
+            return
+        }
+        Logger.shared.log("QRLoginGallery", "QR decoded")
+        guard let url = URL(string: payload), let token = loginToken(from: url) else {
+            Logger.shared.log("QRLoginGallery", "code carries no login token")
+            return
+        }
+        Logger.shared.log("QRLoginGallery", "login token parsed, importing")
+        let _ = (TelegramEngineUnauthorized(account: self.account).auth.importAuthTransferToken(accountManager: self.sharedContext.accountManager, token: token, syncContacts: true)
+        |> deliverOnMainQueue).start(next: { result in
+            switch result {
+            case .loggedIn:
+                Logger.shared.log("QRLoginGallery", "logged in")
+            case .passwordRequested:
+                Logger.shared.log("QRLoginGallery", "two-step password required")
+            case .changeAccountAndRetry:
+                Logger.shared.log("QRLoginGallery", "datacenter changed, retrying")
+            case .displayToken:
+                Logger.shared.log("QRLoginGallery", "unexpected display token")
+            }
+        }, error: { error in
+            Logger.shared.log("QRLoginGallery", "import failed: \(error)")
+        })
+    }
+
+    fileprivate func qrPayload(in image: UIImage) -> String? {
+        guard let ciImage = CIImage(image: image) else {
+            return nil
+        }
+        let options: [String: Any] = [CIDetectorAccuracy: CIDetectorAccuracyHigh]
+        guard let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: options) else {
+            return nil
+        }
+        for case let feature as CIQRCodeFeature in detector.features(in: ciImage) {
+            if let value = feature.messageString {
+                return value
+            }
+        }
+        return nil
+    }
+
+    fileprivate func loginToken(from url: URL) -> Data? {
+        guard url.scheme?.lowercased() == "tg", url.host?.lowercased() == "login" else {
+            return nil
+        }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let value = components.queryItems?.first(where: { $0.name == "token" })?.value else {
+            return nil
+        }
+        var base64 = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 {
+            base64 += "="
+        }
+        return Data(base64Encoded: base64)
     }
 }

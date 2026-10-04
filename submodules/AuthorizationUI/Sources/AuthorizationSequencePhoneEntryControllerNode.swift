@@ -320,6 +320,10 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     private let contactSyncNode: ContactSyncNode
     private let proceedNode: SolidRoundedButtonNode
     private let qrButton: ASButtonNode
+    // Telegram Plus: the node cannot present controllers, so the tap is handed to
+    // the owner (the controller), which opens the image picker and completes the
+    // login. Set by AuthorizationSequencePhoneEntryController.
+    public var qrAction: (() -> Void)?
     
     private var qrNode: ASImageNode?
     // Telegram Plus: true from the moment a token export starts until it returns.
@@ -730,18 +734,8 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     }
     
     @objc private func qrPressed() {
-        Logger.shared.log("QRLogin", "QR entry tapped")
-        if self.qrNode != nil {
-            // A QR is already on screen: the tap means "close".
-            self.hideQrCode()
-        } else if self.qrExportInFlight && CACurrentMediaTime() - self.qrExportStartedAt < 15.0 {
-            // A token export is still running. Ignore the tap instead of cancelling:
-            // cancelling here is exactly what made the button appear dead, because
-            // the user taps again while the first request is still waiting.
-            Logger.shared.log("QRLogin", "tap ignored: export already in flight")
-        } else {
-            self.showQrCode()
-        }
+        Logger.shared.log("QRLogin", "QR entry tapped: handing over to the picker")
+        self.qrAction?()
     }
     
     // Telegram Plus: QR login was previously reachable only through a debug-only
