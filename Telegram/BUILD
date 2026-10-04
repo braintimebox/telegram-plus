@@ -432,6 +432,7 @@ plist_fragment(
             <array>
                 <string>tg</string>
                 <string>tonsite</string>
+                <string>tgplus</string>
             </array>
         </dict>
     </array>
