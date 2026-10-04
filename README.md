@@ -2,8 +2,13 @@
 
 Telegram Plus is a minimal fork of the **official Telegram iOS** client
 (`TelegramMessenger/Telegram-iOS`). It keeps the original architecture, behaviour
-and feature set. The chat list UI changes below are the point of the fork;
-everything else exists only to make the result installable, launched and
+and feature set. Three changes are the point of the fork:
+
+1. **Chat List swipe actions are disabled** (see below) - no capability is lost, every action moved to the long-press / context menu.
+2. **A chat that has topics opens as a regular screen.** Neither the side topics panel nor its header strip is built, so nothing frames a group's topics; the folder list stays where it belongs, on the chat list.
+3. **The fork has its own URL scheme, `tgplus://`** (see [URL schemes](#url-schemes)), so a link can address Telegram Plus instead of the official app that shares `tg://`.
+
+Everything else exists only to make the result installable, launched and
 diagnosable on a device without a Mac.
 
 Every change below is **fixed behaviour**: it is always on, and there is no
