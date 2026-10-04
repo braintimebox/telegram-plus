@@ -237,3 +237,48 @@ Each release is built using a specific Xcode version (see `versions.json`). The 
 ```
 python3 build-system/Make/Make.py --overrideXcodeVersion build ... # Don't check the version of Xcode
 ```
+
+# URL schemes
+
+Telegram Plus registers these URL schemes (`CFBundleURLTypes` in `Telegram/Telegram-iOS/Info.plist` and `InfoBazel.plist`):
+
+| scheme | purpose | reaches Telegram Plus? |
+| --- | --- | --- |
+| `telegram` | legacy upstream scheme | no - kept only for compatibility |
+| `tg` | upstream scheme, shared with the official Telegram app | not reliably: when both apps are installed, iOS decides which one handles it |
+| `tgplus` | **app-specific scheme of this fork** | **yes, always** |
+| `ton` | TON, upstream | not for chat links |
+| `tonsite` | TON sites, upstream | **no - never use as the app-specific scheme**: `OpenUrl.swift` routes `tonsite` into the web/TON branch, so it can never reach the `tg://`-style handler |
+
+## Addressing Telegram Plus instead of the official app
+
+Because the official Telegram app and Telegram Plus both claim `tg`, a `tg://` link may open either one. Use the fork's own scheme to address Telegram Plus unambiguously:
+
+```
+tgplus://privatepost?channel=<channel_id>&post=<message_id>
+tgplus://privatepost?channel=<channel_id>&thread=<thread_id>&post=<message_id>
+```
+
+Example:
+
+```
+tgplus://privatepost?channel=3911407661&post=23236
+```
+
+The handler (`submodules/TelegramUI/Sources/OpenUrl.swift`, `case "privatepost"`) converts this into the canonical internal form `t.me/c/<channel_id>/<message_id>` and opens that message.
+
+Any host that works under `tg://` also works under `tgplus://`: the gates in `OpenUrl.swift` and `AppDelegate.swift` accept `tg`, `tgplus` and the configured app-specific scheme. A few inner host parsers (`UrlHandling.swift`, `OpenUrl.swift` line 114) still match `tg` only - those handle other hosts and do not affect `privatepost`.
+
+## How the scheme is configured
+
+The app-specific scheme is a build variable, not a runtime setting:
+
+1. `build-system/telegram-plus-configuration.json` sets `"app_specific_url_scheme": "tgplus"`.
+2. The CI workflow also exports it for the build step (`export APP_SPECIFIC_URL_SCHEME="tgplus"`), mirroring how upstream does it in `build-system/verify.sh` (`export APP_SPECIFIC_URL_SCHEME="tgapp"`). The JSON value alone did **not** reach the built `Info.plist`, which instead carried `tonsite` - hence the explicit export.
+3. `tgplus` is also listed literally in both plists so registration does not depend on the variable substitution.
+
+To verify a built IPA:
+
+```
+unzip -p TelegramPlus.ipa Payload/Telegram.app/Info.plist | plutil -p - | grep -A4 CFBundleURLSchemes
+```

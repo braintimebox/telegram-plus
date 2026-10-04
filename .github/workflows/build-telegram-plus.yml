@@ -68,6 +68,15 @@ jobs:
           BAZEL_USER_ROOT="/Users/Shared/bazel_cache"
           BAZEL_DISK_CACHE="/Users/Shared/bazel_disk_cache"
 
+          # Telegram Plus: the app-specific URL scheme is what lets a link address
+          # THIS fork instead of the official app (both register "tg"). Upstream
+          # passes it through the environment - build-system/verify.sh does
+          # `export APP_SPECIFIC_URL_SCHEME="tgapp"` and
+          # prepare-build-variables-Telegram.sh requires it to be set. The JSON
+          # configuration alone did not reach the built Info.plist (the product
+          # carried "tonsite"), so it is exported here as well.
+          export APP_SPECIFIC_URL_SCHEME="tgplus"
+
           cd $SOURCE_DIR
 
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
