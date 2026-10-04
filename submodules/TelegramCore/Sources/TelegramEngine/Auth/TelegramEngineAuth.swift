@@ -20,6 +20,14 @@ public extension TelegramEngineUnauthorized {
             return _internal_exportAuthTransferToken(accountManager: accountManager, account: self.account, otherAccountUserIds: otherAccountUserIds, syncContacts: syncContacts)
         }
 
+        // Telegram Plus: log this (not yet authorised) device in with a login token
+        // produced by another client, e.g. from a "tg://login?token=..." code captured
+        // as an image. Distinct from exportAuthTransferToken, which displays a code of
+        // our own for somebody else to confirm.
+        public func importAuthTransferToken(accountManager: AccountManager<TelegramAccountManagerTypes>, token: Data, syncContacts: Bool) -> Signal<ExportAuthTransferTokenResult, ImportAuthTransferTokenError> {
+            return _internal_importAuthTransferToken(accountManager: accountManager, account: self.account, token: token, syncContacts: syncContacts)
+        }
+
         public func twoStepAuthData() -> Signal<TwoStepAuthData, MTRpcError> {
             return _internal_twoStepAuthData(self.account.network)
         }
