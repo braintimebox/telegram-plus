@@ -274,8 +274,12 @@ Any host that works under `tg://` also works under `tgplus://`: the gates in `Op
 The app-specific scheme is a build variable, not a runtime setting:
 
 1. `build-system/telegram-plus-configuration.json` sets `"app_specific_url_scheme": "tgplus"`.
-2. The CI workflow also exports it for the build step (`export APP_SPECIFIC_URL_SCHEME="tgplus"`), mirroring how upstream does it in `build-system/verify.sh` (`export APP_SPECIFIC_URL_SCHEME="tgapp"`). The JSON value alone did **not** reach the built `Info.plist`, which instead carried `tonsite` - hence the explicit export.
-3. `tgplus` is also listed literally in both plists so registration does not depend on the variable substitution.
+2. The CI workflow exports it for the build step (`export APP_SPECIFIC_URL_SCHEME="tgplus"`), mirroring upstream's `build-system/verify.sh` (`export APP_SPECIFIC_URL_SCHEME="tgapp"`).
+
+**Measured status:** neither of the above reached the product yet. Builds 3757, 3758 (with `tgplus` written literally into both plists) and 3759 (with the environment export) all carry `['tg', 'tonsite']` in the built `Payload/Telegram.app/Info.plist`. The string `tonsite` does not exist anywhere in this repository, so the built plist is not produced from these files - the scheme is injected by the build system's own template. Until that template is located and changed, `tgplus://` links do not reach the app and `tg://` links remain shared with the official Telegram app.
+
+Diagnostic to run next (not yet done): put a uniquely named probe scheme into `Info.plist`/`InfoBazel.plist` and rebuild. If the probe appears in the product, these files are used and something strips `tgplus`; if it does not, the product's plist comes from elsewhere.
+
 
 To verify a built IPA:
 
