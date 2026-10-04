@@ -41,14 +41,19 @@ jobs:
             --old-bundle ph.telegra.Telegraph \
             --new-bundle ph.telegra.TelegramPlus
 
-      - name: Cache Bazel
+      - name: Cache Bazel disk cache
         continue-on-error: true
         uses: actions/cache@v4
         with:
-          path: /Users/Shared/bazel_cache
-          key: ${{ runner.os }}-bazel-${{ hashFiles('**/BUILD', '**/BUILD.bazel', '**/*.bzl', 'WORKSPACE') }}
+          # Telegram Plus: the previous cache was keyed on a hash of every BUILD
+          # file, so any edit to any BUILD invalidated it, and it cached the Bazel
+          # user root, which is far larger than GitHub's 10 GB budget. Bazel's own
+          # content-addressed disk cache is the right thing to persist: it survives
+          # BUILD edits, is validated by action digest, and reuses compiled objects.
+          path: /Users/Shared/bazel_disk_cache
+          key: ${{ runner.os }}-bazel-disk-v1
           restore-keys: |
-            ${{ runner.os }}-bazel-
+            ${{ runner.os }}-bazel-disk-
 
       - name: Build the App
         run: |
@@ -59,7 +64,9 @@ jobs:
 
           SOURCE_DIR=/Users/Shared/telegram-ios
           mkdir -p /Users/Shared/bazel_cache
+          mkdir -p /Users/Shared/bazel_disk_cache
           BAZEL_USER_ROOT="/Users/Shared/bazel_cache"
+          BAZEL_DISK_CACHE="/Users/Shared/bazel_disk_cache"
 
           cd $SOURCE_DIR
 
@@ -75,6 +82,7 @@ jobs:
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
+            --cacheDir="$BAZEL_DISK_CACHE" \
             --overrideXcodeVersion \
             build \
             --configurationPath="build-system/telegram-plus-configuration.json" \
