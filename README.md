@@ -271,15 +271,24 @@ Any host that works under `tg://` also works under `tgplus://`: the gates in `Op
 
 ## How the scheme is configured
 
-The app-specific scheme is a build variable, not a runtime setting:
+The Bazel build generates the app's `CFBundleURLTypes` from a `plist_fragment` in `Telegram/BUILD` (`name = "UrlTypesInfoPlist"`). That fragment hardcodes the compatibility list and its template receives only `telegram_bundle_id` - there is no variable for the app-specific scheme at all:
 
-1. `build-system/telegram-plus-configuration.json` sets `"app_specific_url_scheme": "tgplus"`.
-2. The CI workflow exports it for the build step (`export APP_SPECIFIC_URL_SCHEME="tgplus"`), mirroring upstream's `build-system/verify.sh` (`export APP_SPECIFIC_URL_SCHEME="tgapp"`).
+```
+<key>CFBundleURLSchemes</key>
+<array>
+    <string>tg</string>
+    <string>tonsite</string>
+    <string>tgplus</string>   <!-- Telegram Plus -->
+</array>
+```
 
-**Measured status:** neither of the above reached the product yet. Builds 3757, 3758 (with `tgplus` written literally into both plists) and 3759 (with the environment export) all carry `['tg', 'tonsite']` in the built `Payload/Telegram.app/Info.plist`. The string `tonsite` does not exist anywhere in this repository, so the built plist is not produced from these files - the scheme is injected by the build system's own template. Until that template is located and changed, `tgplus://` links do not reach the app and `tg://` links remain shared with the official Telegram app.
+Consequences, all measured on built IPAs:
 
-Diagnostic to run next (not yet done): put a uniquely named probe scheme into `Info.plist`/`InfoBazel.plist` and rebuild. If the probe appears in the product, these files are used and something strips `tgplus`; if it does not, the product's plist comes from elsewhere.
+- `Telegram/Telegram-iOS/Info.plist` and `InfoBazel.plist` are **not** the source of the built schemes. Builds 3758 (with `tgplus` written literally into both) still shipped `['tg', 'tonsite']`.
+- `export APP_SPECIFIC_URL_SCHEME="tgplus"` in the CI build step changed nothing either (build 3759).
+- Adding `tgplus` to the fragment in `Telegram/BUILD` worked: build 3761 ships `['tg', 'tonsite', 'tgplus']`.
 
+So: to change the fork's URL schemes, edit the fragment in `Telegram/BUILD`. The `Info.plist`/`InfoBazel.plist` entries and the JSON/env configuration do not affect the Bazel-built product.
 
 To verify a built IPA:
 
