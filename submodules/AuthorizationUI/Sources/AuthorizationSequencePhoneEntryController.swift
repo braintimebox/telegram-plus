@@ -160,9 +160,7 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
             strongSelf.accountUpdated?(account)
         }
         self.controllerNode.qrAction = { [weak self] in
-            if #available(iOS 14.0, *) {
-                self?.presentQrImagePicker()
-            }
+            self?.presentQrImagePicker()
         }
         self.controllerNode.retryPasskey = { [weak self] in
             guard let self else {
@@ -452,7 +450,6 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
 // that is already authorised; the user keeps it as a screenshot and picks it here.
 // Reading the image needs no account, and the login goes through the unauthorized
 // engine's importAuthTransferToken (added by this fork).
-@available(iOS 14.0, *)
 extension AuthorizationSequencePhoneEntryController: PHPickerViewControllerDelegate {
     fileprivate func presentQrImagePicker() {
         Logger.shared.log("QRLoginGallery", "opening the image picker")
@@ -461,7 +458,7 @@ extension AuthorizationSequencePhoneEntryController: PHPickerViewControllerDeleg
         configuration.selectionLimit = 1
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
-        self.sharedContext.applicationBindings.presentNativeController(picker)
+        self.present(picker, in: .window(.root), with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet))
     }
 
     public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -494,11 +491,7 @@ extension AuthorizationSequencePhoneEntryController: PHPickerViewControllerDeleg
             return
         }
         Logger.shared.log("QRLoginGallery", "login token parsed, importing")
-        guard let account = self.account else {
-            Logger.shared.log("QRLoginGallery", "no account to log in")
-            return
-        }
-        let _ = (TelegramEngineUnauthorized(account: account).auth.importAuthTransferToken(accountManager: self.sharedContext.accountManager, token: token, syncContacts: true)
+        let _ = (TelegramEngineUnauthorized(account: self.account).auth.importAuthTransferToken(accountManager: self.sharedContext.accountManager, token: token, syncContacts: true)
         |> deliverOnMainQueue).start(next: { result in
             switch result {
             case .loggedIn:
