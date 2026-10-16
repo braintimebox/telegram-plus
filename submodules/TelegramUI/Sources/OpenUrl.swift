@@ -428,7 +428,20 @@ func openExternalUrlImpl(context: AccountContext, urlContext: OpenURLContext, ur
         if let scheme = parsedUrl.scheme, (scheme == "tg" || scheme == "tgplus" || scheme == context.sharedContext.applicationBindings.appSpecificScheme) {
             var convertedUrl: String?
             let host = parsedUrl.host?.lowercased() ?? ""
-            if let query = parsedUrl.query, let params = QueryParameters(query) {
+            // Telegram Plus: tg://c/<channelId>/<messageId> and tg://c/<channelId>/<threadId>/<messageId>.
+            // Upstream supports this form only as the web URL t.me/c/... (parsed in UrlHandling.swift);
+            // the tg:// switch above matches hosts with a query string, and the c form carries no query,
+            // so it used to be ignored. Normalised here to the web form the existing parser understands.
+            if host == "c" {
+                let components = parsedUrl.path.split(separator: "/").map(String.init)
+                let channelId = components.first.flatMap(Int64.init)
+                if components.count == 2, let channelId = channelId, Int64(components[1]) != nil {
+                    convertedUrl = makeTelegramUrl("/c/\(channelId)/\(components[1])")
+                } else if components.count == 3, let channelId = channelId, Int64(components[1]) != nil, Int64(components[2]) != nil {
+                    convertedUrl = makeTelegramUrl("/c/\(channelId)/\(components[1])/\(components[2])")
+                }
+            }
+            if convertedUrl == nil, let query = parsedUrl.query, let params = QueryParameters(query) {
                 switch host {
                 case "localpeer":
                     if let peerIdValue = params["id"].flatMap(Int64.init), let accountId = params["accountId"].flatMap(Int64.init) {
