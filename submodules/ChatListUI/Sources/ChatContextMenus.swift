@@ -391,7 +391,12 @@ func chatContextMenuItems(context: AccountContext, peerId: EnginePeer.Id, promoI
                             }
                         }
                         
-                        let archiveEnabled = !isSavedMessages && peerId != EnginePeer.Id(namespace: Namespaces.Peer.CloudUser, id: EnginePeer.Id.Id._internalFromInt64Value(777000)) && peerId == context.account.peerId
+                        // Telegram Plus: upstream required `peerId == context.account.peerId`
+                        // here, while `isSavedMessages` is that same comparison - so the
+                        // condition was always false and Archive never appeared in the
+                        // long-press menu (it existed only as a swipe action). Swipes are
+                        // disabled in this fork, so the action must be reachable here.
+                        let archiveEnabled = !isSavedMessages && peerId != EnginePeer.Id(namespace: Namespaces.Peer.CloudUser, id: EnginePeer.Id.Id._internalFromInt64Value(777000))
                         if let group = peerGroup {
                             if archiveEnabled {
                                 let isArchived = group == .archive
