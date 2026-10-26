@@ -88,8 +88,12 @@ class BazelCommandLine:
         self.common_release_args = [
             # https://github.com/bazelbuild/rules_swift
             # Enable whole module optimization.
-            '--features=swift.opt_uses_wmo',
-
+            # Telegram Plus: WMO compiles a module as one unit, so any edit inside a
+            # module recompiles ALL of it and, transitively, everything that imports it
+            # (measured: 232 Swift modules, ~25 min). Without WMO rules_swift compiles
+            # per file, so an edit rebuilds one file plus the link step.
+            # Binary grows (code is 74% of the .ipa), so it is opt-in: TGP_WITH_WMO=1.
+        ] + (['--features=swift.opt_uses_wmo'] if os.environ.get('TGP_WITH_WMO') == '1' else []) + [
             # https://github.com/bazelbuild/rules_swift
             # Use -Osize instead of -O when building swift modules.
             '--features=swift.opt_uses_osize',
@@ -186,12 +190,10 @@ class BazelCommandLine:
                 # Always build universal Watch binaries.
                 '--watchos_cpus=arm64_32',
 
-                # Generate DSYM files when building.
-                '--apple_generate_dsym',
-
-                # Require DSYM files as build output.
-                '--output_groups=+dsyms',
-            ] + self.common_release_args
+            # Telegram Plus: dSYM generation costs minutes on a 74 MB binary and the
+            # sideloaded IPA never consumes it. Enable only when symbols are needed:
+            # TGP_WITH_DSYMS=1.
+            ] + (['--apple_generate_dsym', '--output_groups=+dsyms'] if os.environ.get('TGP_WITH_DSYMS') == '1' else []) + self.common_release_args
         else:
             raise Exception('Unknown configuration {}'.format(configuration))
 

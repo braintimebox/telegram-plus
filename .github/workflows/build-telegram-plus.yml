@@ -93,6 +93,7 @@ jobs:
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             --cacheDir="$BAZEL_DISK_CACHE" \
             --overrideXcodeVersion \
+            --enableParallelSwiftmoduleGeneration \
             build \
             --configurationPath="build-system/telegram-plus-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
