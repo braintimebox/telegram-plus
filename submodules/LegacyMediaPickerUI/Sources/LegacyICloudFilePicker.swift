@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 import Display
 import TelegramPresentationData
 import LegacyUI
@@ -25,6 +26,11 @@ private class DocumentPickerViewController: UIDocumentPickerViewController {
 
 private final class LegacyICloudFileController: LegacyController, UIDocumentPickerDelegate {
     let completion: ([URL]) -> Void
+    private var didComplete = false
+    
+    var hasCompletedSelection: Bool {
+        return self.didComplete
+    }
     
     init(presentation: LegacyControllerPresentation, theme: PresentationTheme?, completion: @escaping ([URL]) -> Void) {
         self.completion = completion
@@ -36,16 +42,24 @@ private final class LegacyICloudFileController: LegacyController, UIDocumentPick
         fatalError("init(coder:) has not been implemented")
     }
     
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        self.completion([])
-    }
-    
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    private func complete(_ urls: [URL]) {
+        if self.didComplete {
+            return
+        }
+        self.didComplete = true
         self.completion(urls)
     }
     
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        self.complete([])
+    }
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        self.complete(urls)
+    }
+    
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) {
-        self.completion([url])
+        self.complete([url])
     }
 }
 
@@ -81,12 +95,32 @@ public func legacyICloudFilePicker(theme: PresentationTheme, mode: LegacyICloudF
         } else {
             controller = DocumentPickerViewController(url: url, in: mode.documentPickerMode)
         }
+    } else if #available(iOS 14.0, *) {
+        var contentTypes: [UTType] = []
+        for documentType in documentTypes {
+            if let contentType = UTType(documentType) {
+                contentTypes.append(contentType)
+            }
+        }
+        if contentTypes.isEmpty {
+            contentTypes = [UTType.item]
+        }
+        var asCopy = false
+        if case .import = mode {
+            asCopy = true
+        }
+        controller = DocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: asCopy)
     } else {
         controller = DocumentPickerViewController(documentTypes: documentTypes, in: mode.documentPickerMode)
     }
     controller.forceDarkTheme = forceDarkTheme || theme.overallDarkAppearance
-    controller.didDisappear = {
-        dismissImpl?()
+    controller.didDisappear = { [weak legacyController] in
+        // Telegram Plus: the picker's view disappears before the delegate callback is
+        // delivered on recent iOS versions. Dismissing the host at that moment tore the
+        // delegate down, so the picked file was never handed over ("Open" did nothing).
+        if let legacyController = legacyController, !legacyController.hasCompletedSelection {
+            dismissImpl?()
+        }
     }
     controller.delegate = legacyController
     if #available(iOSApplicationExtension 11.0, iOS 11.0, *), hasMultiselection {
