@@ -134,10 +134,10 @@ public func legacyICloudFilePicker(theme: PresentationTheme, mode: LegacyICloudF
     }
     
     var presentationRetries = 0
-    legacyController.presentationCompleted = { [weak legacyController] in
+    legacyController.presentationCompleted = { [weak legacyController] () -> Void in
         if let legacyController = legacyController {
             if let window = legacyController.view.window {
-                Logger.shared.log("FilePicker", "present: window ok, key=\(window.isKeyWindow), root=\(String(describing: type(of: window.rootViewController)))")
+                Logger.shared.log("FilePicker", "present: window ok, key=\(window.isKeyWindow)")
                 controller.popoverPresentationController?.sourceView = window
                 controller.popoverPresentationController?.sourceRect = CGRect(origin: CGPoint(x: window.bounds.width / 2.0, y: window.bounds.size.height - 1.0), size: CGSize(width: 1.0, height: 1.0))
                 window.rootViewController?.present(controller, animated: true)
@@ -146,7 +146,7 @@ public func legacyICloudFilePicker(theme: PresentationTheme, mode: LegacyICloudF
                 presentationRetries += 1
                 Logger.shared.log("FilePicker", "present: window is nil, retry \(presentationRetries)")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    legacyController.presentationCompleted?(legacyController)
+                    legacyController.presentationCompleted?()
                 }
             } else {
                 Logger.shared.log("FilePicker", "present: window is nil, giving up")
