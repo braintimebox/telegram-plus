@@ -1455,6 +1455,15 @@ extension ChatControllerImpl {
                     strongSelf.enqueueMediaMessageDisposable.set((combineLatest(signals)
                     |> deliverOnMainQueue).startStrict(next: { results in
                         if let strongSelf = self {
+                            // Telegram Plus: the picker could hand over a URL that produced
+                            // no description at all (security scope, bookmark or iCloud
+                            // metadata failure). Upstream just skipped nil entries, so the
+                            // user saw nothing happen. Surface it instead of staying silent.
+                            if !results.contains(where: { $0 != nil }) {
+                                Logger.shared.log("FilePicker", "enqueue: every description is nil, nothing to send")
+                                strongSelf.present(textAlertController(context: strongSelf.context, updatedPresentationData: strongSelf.updatedPresentationData, title: nil, text: strongSelf.presentationData.strings.Login_UnknownError, actions: [TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                                return
+                            }
                             let replyMessageSubject = strongSelf.presentationInterfaceState.interfaceState.replyMessageSubject
 
                             for item in results {

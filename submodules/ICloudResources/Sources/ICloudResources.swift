@@ -123,15 +123,39 @@ private func audioArtworkData(from asset: AVURLAsset) -> Data? {
 
 private func descriptionWithUrl(_ url: URL) -> ICloudFileDescription? {
     if #available(iOSApplicationExtension 9.0, iOS 9.0, *) {
-        guard url.startAccessingSecurityScopedResource() else {
+        // Telegram Plus: `startAccessingSecurityScopedResource()` returns false for URLs
+        // that are already accessible (for example the app's own container), so a false
+        // result must not abort the description - that dropped the picked file silently
+        // and the chat showed no reaction at all.
+        let didAccess = url.startAccessingSecurityScopedResource()
+        Logger.shared.log("FilePicker", "description: access=\(didAccess) name=\(url.lastPathComponent)")
+
+        // Try the legacy bookmark flavour first (as upstream did), then plain options so a
+        // picker URL is never lost only because of the bookmark flavour.
+        var urlData = try? url.bookmarkData(options: URL.BookmarkCreationOptions.suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+        if urlData == nil {
+            urlData = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
+        guard let urlData = urlData else {
+            Logger.shared.log("FilePicker", "description: bookmark failed, aborting")
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
             return nil
         }
-        
-        guard let urlData = try? url.bookmarkData(options: URL.BookmarkCreationOptions.suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil) else {
-            return nil
+
+        var resolvedFileSize: Int?
+        if let values = try? url.resourceValues(forKeys: Set([.fileSizeKey])) {
+            resolvedFileSize = values.fileSize
         }
-        
-        guard let values = try? url.resourceValues(forKeys: Set([.fileSizeKey])), let fileSize = values.fileSize else {
+        if resolvedFileSize == nil, let attributes = try? FileManager.default.attributesOfItem(atPath: url.path), let size = attributes[.size] as? NSNumber {
+            resolvedFileSize = size.intValue
+        }
+        guard let fileSize = resolvedFileSize else {
+            Logger.shared.log("FilePicker", "description: file size unavailable, aborting")
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
             return nil
         }
         
@@ -223,6 +247,7 @@ public func iCloudFileDescription(_ url: URL) -> Signal<ICloudFileDescription?, 
                 query.query.disableUpdates()
                 
                 guard let metadataItem = query.query.results.first as? NSMetadataItem else {
+                    Logger.shared.log("FilePicker", "icloud: metadata not found for \(url.lastPathComponent)")
                     query.query.enableUpdates()
                     return
                 }
@@ -230,6 +255,7 @@ public func iCloudFileDescription(_ url: URL) -> Signal<ICloudFileDescription?, 
                 query.query.stop()
                 
                 guard let fileSize = metadataItem.value(forAttribute: NSMetadataItemFSSizeKey) as? NSNumber, fileSize != 0 else {
+                    Logger.shared.log("FilePicker", "icloud: zero or unknown size for \(url.lastPathComponent)")
                     subscriber.putNext(nil)
                     subscriber.putCompletion()
                     return
@@ -299,6 +325,7 @@ public func fetchICloudFileResource(resource: ICloudFileResource) -> Signal<Engi
         }
         
         guard url.startAccessingSecurityScopedResource() else {
+            Logger.shared.log("FilePicker", "fetch: security scope denied for \(url.lastPathComponent)")
             subscriber.putCompletion()
             return EmptyDisposable
         }

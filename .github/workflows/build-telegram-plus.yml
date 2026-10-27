@@ -51,7 +51,11 @@ jobs:
           # content-addressed disk cache is the right thing to persist: it survives
           # BUILD edits, is validated by action digest, and reuses compiled objects.
           path: /Users/Shared/bazel_disk_cache
-          key: ${{ runner.os }}-bazel-disk-v1
+          # Telegram Plus: a fixed key made actions/cache skip every save (post step took
+          # 0-1s), so the disk cache stayed frozen at the first snapshot and every later
+          # change meant a full 232-module rebuild. A per-run key restores the newest
+          # cache via restore-keys and saves a fresh one each time.
+          key: ${{ runner.os }}-bazel-disk-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-bazel-disk-
 
