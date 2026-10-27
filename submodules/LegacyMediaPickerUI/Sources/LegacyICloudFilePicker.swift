@@ -109,10 +109,14 @@ public func legacyICloudFilePicker(theme: PresentationTheme, mode: LegacyICloudF
         if contentTypes.isEmpty {
             contentTypes = [UTType.item]
         }
-        var asCopy = false
-        if case .import = mode {
-            asCopy = true
-        }
+        // Telegram Plus: the fork used in-place `.open` semantics (asCopy: false) together
+        // with allowsMultipleSelection. That combination left the sheet's "Open" button
+        // doing nothing at all: no delegate callback, therefore nothing to attach and no
+        // error to show. Every caller of this picker copies the file anyway (attachment,
+        // theme, sound, audio), so copy semantics are both correct and the well-trodden
+        // path: the file lands in the app's own container, no security-scoped bookmark and
+        // no iCloud download dance in between.
+        let asCopy = true
         controller = DocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: asCopy)
     } else {
         controller = DocumentPickerViewController(documentTypes: documentTypes, in: mode.documentPickerMode)
