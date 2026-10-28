@@ -18,6 +18,13 @@ jobs:
         with:
           submodules: 'recursive'
           fetch-depth: '0'
+          # Full history is REQUIRED: BUILD_NUMBER is
+          # `git rev-list --count HEAD` + build_number_offset in this workflow and
+          # in build-system/Make/RemoteBuild.py, so a shallow clone renumbers
+          # every build. File contents are not required up front: `blob:none`
+          # keeps the whole commit graph and lets checkout fetch the needed blobs
+          # on demand. Measured baseline for this step: 93-100 s.
+          filter: 'blob:none'
 
       - name: Set active Xcode path
         run: |
